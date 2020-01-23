@@ -390,7 +390,7 @@ MODULE EVAC
        TDET_SMOKE_DENS, DENS_INIT, EVAC_DT_MAX, GROUP_DENS, &
        FC_DAMPING, EVAC_DT_MIN, V_MAX, V_ANGULAR_MAX, V_ANGULAR, &
        SMOKE_MIN_SPEED, SMOKE_MIN_SPEED_FACTOR, SMOKE_MIN_SPEED_VISIBILITY, TAU_CHANGE_DOOR, &
-       HUMAN_SMOKE_HEIGHT, TAU_CHANGE_V0, THETA_SECTOR, CONST_DF, FAC_DF, &
+       HUMAN_SMOKE_HEIGHT, HEAT_GRAD_FAC, SMOKE_BLK_FAC, TAU_CHANGE_V0, THETA_SECTOR, CONST_DF, FAC_DF, &
        CONST_CF, FAC_CF, FAC_1_WALL, FAC_2_WALL, FAC_V0_DIR, FAC_V0_NOCF, FAC_NOCF, &
        CF_MIN_A, CF_FAC_A_WALL, CF_MIN_TAU, CF_MIN_TAU_INER, CF_FAC_TAUS, FAC_DOOR_QUEUE, FAC_DOOR_ALPHA,&
        FAC_DOOR_WAIT, CF_MIN_B, FAC_DOOR_OLD, FAC_DOOR_OLD2, R_HERDING, W0_HERDING, WR_HERDING, &
@@ -565,6 +565,7 @@ CONTAINS
          OUTPUT_ACCELERATION, OUTPUT_NERVOUSNESS, COLOR_INDEX, DEAD_RGB, DEAD_COLOR, &
          SMOKE_MIN_SPEED, SMOKE_MIN_SPEED_FACTOR, SMOKE_MIN_SPEED_VISIBILITY, &
          TAU_CHANGE_DOOR, RGB, COLOR, AVATAR_COLOR, AVATAR_RGB, HUMAN_SMOKE_HEIGHT, &
+	 HEAT_GRAD_FAC, SMOKE_BLK_FAC, &
          TAU_CHANGE_V0, THETA_SECTOR, CONST_DF, FAC_DF, CONST_CF, FAC_CF, &
          FAC_1_WALL, FAC_2_WALL, FAC_V0_DIR, FAC_V0_NOCF, FAC_NOCF, &
          CF_MIN_A, CF_FAC_A_WALL, CF_MIN_TAU, CF_MIN_TAU_INER, CF_FAC_TAUS, &
@@ -1472,6 +1473,10 @@ CONTAINS
       ! c(Ks) = ( 1 + (BETA*Ks)/ALPHA )  [0,1] interval, c(Ks=0)=1, c(Ks=inf)=0
       SMOKE_SPEED_ALPHA = 0.706_EB   ! Lund 2003, report 3126 (Frantzich & Nilsson)
       SMOKE_SPEED_BETA  = -0.057_EB  ! Lund 2003, report 3126 (Frantzich & Nilsson)
+      
+      !Hazard resistence to impede agents movement (e.g., heat and smoke)
+      HEAT_GRAD_FAC = 0.0_EB 
+      SMOKE_BLK_FAC = 0.0_EB
 
       ! Next parameters are for the counterflow (CF)
       ! Evac 2.2.0: Counterflow treatment is the default
@@ -8153,6 +8158,19 @@ CONTAINS
           JJY = FLOOR(YJ+0.5_EB)
           KKZ = FLOOR(ZK+0.5_EB)
           !
+	  
+	  HR%FX_Hazard = 0.0_EB
+	  HR%FX_Hazard = 0.0_EB
+	  
+	  HR%FX_Hazard = -HEAT_GRAD_FAC*(HUMAN_GRID(II,JJ)%TMP_G - HUMAN_GRID(II-1,JJ)%TMP_G)*HUMAN_GRID(II,JJ)%TMP_G
+	  HR%FY_Hazard = -HEAT_GRAD_FAC*(HUMAN_GRID(II,JJ)%TMP_G - HUMAN_GRID(II,JJ-1)%TMP_G)*HUMAN_GRID(II,JJ)%TMP_G
+	  
+	  HR%FX_Hazard = HR%FX_Hazard - SMOKE_BLK_FAC*HR%U*HUMAN_GRID(II,JJ)%SOOT_DENS/SQRT(HR%U**2 + HR%V**2)
+	  HR%FY_Hazard = HR%FY_Hazard - SMOKE_BLK_FAC*HR%V*HUMAN_GRID(II,JJ)%SOOT_DENS/SQRT(HR%U**2 + HR%V**2)
+	  
+	  HR%FX_Hazard = min(HR%FX_Hazard, HR%Mass*2.0_EB)
+	  HR%FY_Hazard = min(HR%FY_Hazard, HR%Mass*2.0_EB)
+	  
           HR%W = 0.0_EB
           SMOKE_SPEED_FAC = 1.0_EB
           IF (.NOT.L_DEAD .AND. T >= HR%TDET) HR%DETECT1 = IBSET(HR%DETECT1,0)  ! Detected by the T_det distribution, bit 0
@@ -9996,8 +10014,8 @@ CONTAINS
           ! ========================================================
 
           ! Save the forces for the loop evac_move_loop (next time step)
-          HR%F_X = P2P_U
-          HR%F_Y = P2P_V
+          HR%F_X = P2P_U + HR%FX_Hazard
+          HR%F_Y = P2P_V + HR%FY_Hazard
           HR%SUMFORCES  = CONTACT_F
           HR%SUMFORCES2 = SOCIAL_F + CONTACT_F
           HR%TORQUE = P2P_TORQUE
